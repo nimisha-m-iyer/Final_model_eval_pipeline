@@ -2,11 +2,19 @@
 ======================================================================
  MINIMAL LLM EVALUATION PIPELINE
 
- Input:  a list of dicts, e.g. [{"id": "1", "text": "...", "label": "safe"}]
- Output: a list of dicts with predictions, saved as CSV, metrics printed
+ Input:  a list of dicts
+         [{"id": "1", "text": "...", "label": "safe", "language": "ml"}]
+
+ Output:
+         - predictions shown in the editor
+         - predicted label
+         - reason
+         - metrics
+         - CSV containing:
+           id, predicted_label, reason, language
 
  The model is loaded exactly ONCE inside evaluate() and reused for every
- record / every batch -- it is never reloaded mid-run.
+ record / every batch.
 ======================================================================
 """
 
@@ -17,7 +25,7 @@ from models import gemma, qwen, aya, llama
 from utils import normalize_label, compute_metrics
 
 
-# Add a new model by adding one line here, pointing at its own file in models/
+# Add a new model by adding one line here
 MODEL_MODULES = {
     "gemma": gemma,
     "qwen": qwen,
@@ -41,12 +49,6 @@ DEFAULT_USER_TEMPLATE = (
 
 
 def _pick_module(model_path, model_type=None):
-    """
-    Decides which models/<x>.py file handles this model.
-    - If model_type is given explicitly, that always wins.
-    - Otherwise, matched by checking if a known keyword appears
-      in the model_path string.
-    """
 
     if model_type:
 
@@ -76,40 +78,64 @@ def _pick_module(model_path, model_type=None):
     )
 
 
-def _build_messages(text, prompt_config):
-
-    system_prompt = prompt_config.get(
-        "system_prompt",
-        DEFAULT_SYSTEM_PROMPT
-    )
-
-    user_template = prompt_config.get(
-        "user_template",
-        DEFAULT_USER_TEMPLATE
-    )
+def _build_messages(text, prompt):
 
     return [
         {
             "role": "system",
-            "content": system_prompt
+            "content": DEFAULT_SYSTEM_PROMPT
         },
         {
             "role": "user",
-            "content": user_template.format(
-                text=text
-            )
+            "content": prompt.format(text=text)
         },
     ]
+
+
+def _extract_reason(raw_output):
+
+    """
+    Extract only the final explanation from the model output.
+
+    Example:
+
+    Classification: Not Safe
+
+    Reason: The word is offensive...
+
+    becomes:
+
+    The word is offensive...
+    """
+
+    text = str(raw_output).strip()
+
+    # Find the last occurrence of "reason:"
+    lower_text = text.lower()
+
+    position = lower_text.rfind("reason:")
+
+    if position != -1:
+
+        reason = text[
+            position + len("reason:")
+        ].strip()
+
+        if reason:
+            return reason
+
+    # If the model did not use "Reason:",
+    # return the complete model output.
+    return text
 
 
 def _save_csv(results, output_csv):
 
     fieldnames = [
         "id",
-        "text",
-        "gold_label",
-        "raw_model_output",
-        "predicted_label"
+        "predicted_label",
+        "reason",
+        "language"
     ]
 
     os.makedirs(
@@ -134,8 +160,10 @@ def _save_csv(results, output_csv):
         for r in results:
 
             writer.writerow({
-                k: r.get(k)
-                for k in fieldnames
+                "id": r.get("id"),
+                "predicted_label": r.get("predicted_label"),
+                "reason": r.get("reason"),
+                "language": r.get("language")
             })
 
     print(
@@ -146,36 +174,57 @@ def _save_csv(results, output_csv):
 def evaluate(
     records,
     model_config,
-    prompt_config=None,
+    prompt=None,
     mode="sequence",
     batch_size=8,
     output_csv=None
 ):
     """
-    records      : list of dicts. Each needs "text". "id" and "label" optional.
+    records:
+        List of dictionaries.
 
-    model_config : {
-        "model_path": "<HF hub id or local folder path>",
-        "model_type": "gemma" | "qwen" | "aya" | "llama",
-        "torch_dtype": "bfloat16",
-        "device_map": "auto",
-        "max_new_tokens": 10,
-    }
+        Example:
+        [
+            {
+                "id": "1",
+                "text": "some text",
+                "label": "safe",
+                "language": "ml"
+            }
+        ]
 
-    prompt_config:
-        {"system_prompt": "...", "user_template": "...{text}..."}
+    model_config:
+        {
+            "model_path": "google/gemma-3-4b-it",
+            "model_type": "gemma",
+            "torch_dtype": "bfloat16",
+            "device_map": "auto",
+            "max_new_tokens": 100
+        }
+
+    prompt:
+        Prompt supplied directly from the editor.
 
     mode:
         "sequence" or "batch"
 
     batch_size:
-        only used when mode == "batch"
+        Used only when mode == "batch"
 
     output_csv:
-        where to save predictions
+        CSV output path
     """
 
-    prompt_config = prompt_config or {}
+    # ------------------------------------------------------
+    # PROMPT
+    # ------------------------------------------------------
+
+    if prompt is None:
+        prompt = DEFAULT_USER_TEMPLATE
+
+    # ------------------------------------------------------
+    # MODEL
+    # ------------------------------------------------------
 
     model_path = model_config["model_path"]
 
@@ -183,10 +232,6 @@ def evaluate(
         model_path,
         model_config.get("model_type")
     )
-
-    # ------------------------------------------------------
-    # MODEL LOADED HERE, EXACTLY ONCE
-    # ------------------------------------------------------
 
     print(
         f"[pipeline] loading model from: {model_path}"
@@ -208,8 +253,6 @@ def evaluate(
         "[pipeline] model loaded. Starting evaluation..."
     )
 
-    # ------------------------------------------------------
-
     max_new_tokens = model_config.get(
         "max_new_tokens",
         100
@@ -227,7 +270,7 @@ def evaluate(
 
             messages = _build_messages(
                 record["text"],
-                prompt_config
+                prompt
             )
 
             raw = module.generate_one(
@@ -239,6 +282,8 @@ def evaluate(
 
             predicted_label = normalize_label(raw)
 
+            reason = _extract_reason(raw)
+
             result = {
                 "id": record.get(
                     "id",
@@ -246,14 +291,16 @@ def evaluate(
                 ),
                 "text": record["text"],
                 "gold_label": record.get("label"),
+                "language": record.get("language"),
                 "raw_model_output": raw,
                 "predicted_label": predicted_label,
+                "reason": reason,
             }
 
             results.append(result)
 
             # --------------------------------------------------
-            # SHOW PREDICTION IN EDITOR
+            # SHOW RESULT
             # --------------------------------------------------
 
             print(
@@ -267,10 +314,8 @@ def evaluate(
 
             print(
                 f"Reason: "
-                f"{result['raw_model_output']}"
+                f"{result['reason']}"
             )
-
-            # --------------------------------------------------
 
             if (i + 1) % 20 == 0:
 
@@ -298,7 +343,7 @@ def evaluate(
             messages_list = [
                 _build_messages(
                     r["text"],
-                    prompt_config
+                    prompt
                 )
                 for r in chunk
             ]
@@ -317,6 +362,8 @@ def evaluate(
 
                 predicted_label = normalize_label(raw)
 
+                reason = _extract_reason(raw)
+
                 result = {
                     "id": record.get(
                         "id",
@@ -324,14 +371,16 @@ def evaluate(
                     ),
                     "text": record["text"],
                     "gold_label": record.get("label"),
+                    "language": record.get("language"),
                     "raw_model_output": raw,
                     "predicted_label": predicted_label,
+                    "reason": reason,
                 }
 
                 results.append(result)
 
                 # --------------------------------------------------
-                # SHOW PREDICTION IN EDITOR
+                # SHOW RESULT
                 # --------------------------------------------------
 
                 print(
@@ -345,20 +394,14 @@ def evaluate(
 
                 print(
                     f"Reason: "
-                    f"{result['raw_model_output']}"
+                    f"{result['reason']}"
                 )
-
-                # --------------------------------------------------
 
             print(
                 f"[pipeline] processed "
                 f"{min(start + batch_size, len(records))}/"
                 f"{len(records)}"
             )
-
-    # ======================================================
-    # INVALID MODE
-    # ======================================================
 
     else:
 
@@ -406,17 +449,39 @@ def evaluate(
             f"Accuracy: {metrics['accuracy']}"
         )
 
-        print(
-            f"Precision: {metrics['precision']}"
-        )
+        # Your current utils.py stores these inside per_class.
+        if "per_class" in metrics:
 
-        print(
-            f"Recall: {metrics['recall']}"
-        )
+            labels = list(
+                metrics["per_class"].keys()
+            )
 
-        print(
-            f"F1: {metrics['f1']}"
-        )
+            precision = sum(
+                metrics["per_class"][label]["precision"]
+                for label in labels
+            ) / len(labels)
+
+            recall = sum(
+                metrics["per_class"][label]["recall"]
+                for label in labels
+            ) / len(labels)
+
+            f1 = sum(
+                metrics["per_class"][label]["f1"]
+                for label in labels
+            ) / len(labels)
+
+            print(
+                f"Precision: {round(precision, 4)}"
+            )
+
+            print(
+                f"Recall: {round(recall, 4)}"
+            )
+
+            print(
+                f"F1: {round(f1, 4)}"
+            )
 
     else:
 
@@ -424,9 +489,5 @@ def evaluate(
             "No gold labels were provided — "
             "metrics not computed."
         )
-
-    # ======================================================
-    # RETURN
-    # ======================================================
 
     return results, metrics
