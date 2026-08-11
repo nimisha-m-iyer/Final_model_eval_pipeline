@@ -1,27 +1,5 @@
 """
 MINIMAL LLM EVALUATION PIPELINE
-
-Input:
-    list of dictionaries
-
-Example:
-    [
-        {
-            "id": "1",
-            "text": "some text",
-            "label": "safe",
-            "language": "malayalam"
-        }
-    ]
-
-Output:
-    results + metrics
-
-CSV:
-    id
-    predicted_label
-    reason
-    language
 """
 
 import csv
@@ -71,7 +49,7 @@ Text:
 
 
 # ---------------------------------------------------------
-# SELECT MODEL MODULE
+# SELECT MODEL
 # ---------------------------------------------------------
 
 def _pick_module(model_path, model_type=None):
@@ -143,7 +121,7 @@ def _save_csv(results, output_csv):
         "id",
         "predicted_label",
         "reason",
-        "language",
+        "language"
     ]
 
     os.makedirs(
@@ -180,11 +158,11 @@ def _save_csv(results, output_csv):
                 "language": result.get(
                     "language",
                     ""
-                ),
+                )
             })
 
     print(
-        f"\n[pipeline] CSV saved to: {output_csv}"
+        f"\n[pipeline] predictions saved -> {output_csv}"
     )
 
 
@@ -195,20 +173,26 @@ def _save_csv(results, output_csv):
 def _print_prediction(result):
 
     print(
-        f"[{result['id']}] "
-        f"Language: {result['language']} | "
+        f"\nID        : {result['id']}"
+    )
+
+    print(
+        f"Language  : {result['language']}"
+    )
+
+    print(
         f"Prediction: {result['predicted_label']}"
     )
 
     print(
-        f"Reason: {result['reason']}"
+        f"Reason    : {result['reason']}"
     )
 
     print("-" * 60)
 
 
 # ---------------------------------------------------------
-# MAIN EVALUATION FUNCTION
+# MAIN EVALUATION
 # ---------------------------------------------------------
 
 def evaluate(
@@ -219,45 +203,6 @@ def evaluate(
     batch_size=8,
     output_csv=None
 ):
-
-    """
-    records:
-        List of dictionaries.
-
-        Required:
-            text
-
-        Optional:
-            id
-            label
-            language
-
-    model_config:
-
-        {
-            "model_path": "...",
-            "model_type": "gemma",
-            "torch_dtype": "bfloat16",
-            "device_map": "auto",
-            "max_new_tokens": 50
-        }
-
-    prompt_config:
-
-        {
-            "system_prompt": "...",
-            "user_template": "...{text}..."
-        }
-
-    mode:
-        "sequence" or "batch"
-
-    batch_size:
-        Used only for batch mode.
-
-    output_csv:
-        CSV output path.
-    """
 
     prompt_config = prompt_config or {}
 
@@ -273,7 +218,7 @@ def evaluate(
     # -----------------------------------------------------
 
     print(
-        f"\n[pipeline] Loading model from: {model_path}"
+        f"\n[pipeline] loading model from: {model_path}"
     )
 
     model, tokenizer = module.load(
@@ -285,20 +230,13 @@ def evaluate(
         model_config.get(
             "device_map",
             "auto"
-        ),
+        )
     )
 
     print(
-        "[pipeline] Model loaded."
+        "[pipeline] model loaded. "
+        "Starting evaluation..."
     )
-
-    print(
-        "[pipeline] Starting evaluation...\n"
-    )
-
-    # -----------------------------------------------------
-    # GENERATION SETTINGS
-    # -----------------------------------------------------
 
     max_new_tokens = model_config.get(
         "max_new_tokens",
@@ -308,7 +246,7 @@ def evaluate(
     results = []
 
     # -----------------------------------------------------
-    # SEQUENCE MODE
+    # SEQUENCE
     # -----------------------------------------------------
 
     if mode == "sequence":
@@ -327,8 +265,8 @@ def evaluate(
                 max_new_tokens
             )
 
-            predicted_label, reason = parse_model_output(
-                raw
+            predicted_label, reason = (
+                parse_model_output(raw)
             )
 
             result = {
@@ -336,30 +274,23 @@ def evaluate(
                     "id",
                     str(i)
                 ),
-
                 "text": record["text"],
-
-                "gold_label": record.get(
-                    "label"
-                ),
-
+                "gold_label": record.get("label"),
                 "predicted_label": predicted_label,
-
                 "reason": reason,
-
                 "language": record.get(
                     "language",
                     ""
-                ),
+                )
             }
 
             results.append(result)
 
-            # Show result immediately
+            # SHOW RESULT IN EDITOR
             _print_prediction(result)
 
     # -----------------------------------------------------
-    # BATCH MODE
+    # BATCH
     # -----------------------------------------------------
 
     elif mode == "batch":
@@ -376,9 +307,8 @@ def evaluate(
 
             print(
                 f"\n[pipeline] "
-                f"Processing samples "
-                f"{start + 1}-"
-                f"{min(start + batch_size, len(records))}"
+                f"processing batch "
+                f"{start // batch_size + 1}"
             )
 
             messages_list = [
@@ -389,8 +319,6 @@ def evaluate(
                 for record in chunk
             ]
 
-            # SAME MODEL IS USED
-            # No model loading happens here.
             raw_list = module.generate_batch(
                 model,
                 tokenizer,
@@ -402,8 +330,8 @@ def evaluate(
                 zip(chunk, raw_list)
             ):
 
-                predicted_label, reason = parse_model_output(
-                    raw
+                predicted_label, reason = (
+                    parse_model_output(raw)
                 )
 
                 result = {
@@ -411,27 +339,26 @@ def evaluate(
                         "id",
                         str(start + index)
                     ),
-
                     "text": record["text"],
-
-                    "gold_label": record.get(
-                        "label"
-                    ),
-
+                    "gold_label": record.get("label"),
                     "predicted_label": predicted_label,
-
                     "reason": reason,
-
                     "language": record.get(
                         "language",
                         ""
-                    ),
+                    )
                 }
 
                 results.append(result)
 
-                # Show result immediately
+                # SHOW RESULT IN EDITOR
                 _print_prediction(result)
+
+            print(
+                f"[pipeline] processed "
+                f"{min(start + batch_size, len(records))}/"
+                f"{len(records)}"
+            )
 
     else:
 
@@ -465,9 +392,7 @@ def evaluate(
     # METRICS
     # -----------------------------------------------------
 
-    metrics = compute_metrics(
-        results
-    )
+    metrics = compute_metrics(results)
 
     print("\n")
     print("=" * 60)
