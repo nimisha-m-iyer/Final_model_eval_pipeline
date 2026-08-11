@@ -316,14 +316,19 @@ def evaluate(
 
     metrics = compute_metrics(results)
 
+        metrics = compute_metrics(results)
+
     print("\n===== METRICS =====")
 
-if metrics:
-    print(f"Accuracy: {metrics['accuracy']}")
-    print(f"Precision: {metrics['precision']}")
-    print(f"Recall: {metrics['recall']}")
-    print(f"F1: {metrics['f1']}")
-else:
-    print("No gold labels were provided — metrics not computed.")
+    if metrics:
+        print(f"Accuracy: {metrics['accuracy']}")
+        print(f"Precision: {metrics['precision']}")
+        print(f"Recall: {metrics['recall']}")
+        print(f"F1: {metrics['f1']}")
+    else:
+        print(
+            "No gold labels were provided — "
+            "metrics not computed."
+        )
 
     return results, metrics
