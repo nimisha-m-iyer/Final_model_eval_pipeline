@@ -49,10 +49,11 @@ def load(
 def _build_messages(prompt):
 
     """
-    Gemma receives the prompt as a user message.
+    Gemma-specific chat format.
 
-    The pipeline only supplies a plain string.
-    Gemma handles its own chat-message format here.
+    The pipeline gives Gemma one plain prompt.
+    This function converts it into the format
+    expected by Gemma's chat template.
     """
 
     return [
