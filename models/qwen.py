@@ -1,49 +1,151 @@
 """
-Everything specific to Qwen lives here. Qwen's chat template supports a
-system role natively, so no merging is needed -- otherwise identical
-mechanics to every other model.
+Everything specific to Qwen lives here.
 
-NOTE: if pointing this at a "thinking"-capable Qwen3 checkpoint, increase
-max_new_tokens substantially, since it may emit reasoning text before
-its actual answer. Using a non-thinking checkpoint (e.g. an
-"-Instruct-2507" release) avoids this entirely.
+This file handles:
+- Qwen model loading
+- Qwen tokenizer
+- Qwen chat template
+- sequence generation
+- batch generation
 """
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer
+)
 
 
-def load(model_path, torch_dtype="bfloat16", device_map="auto"):
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path, dtype=getattr(torch, torch_dtype), device_map=device_map
+def load(
+    model_path,
+    torch_dtype="bfloat16",
+    device_map="auto"
+):
+
+    print(
+        f"[qwen] loading tokenizer from: {model_path}"
     )
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path
+    )
+
+    print(
+        f"[qwen] loading model weights from: {model_path}"
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        dtype=getattr(torch, torch_dtype),
+        device_map=device_map
+    )
+
     model.eval()
+
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
+
     return model, tokenizer
 
 
-def generate_one(model, tokenizer, messages, max_new_tokens=10):
+def _build_messages(prompt):
+
+    return [
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+
+
+def generate_one(
+    model,
+    tokenizer,
+    prompt,
+    max_new_tokens=100
+):
+
+    messages = _build_messages(prompt)
+
     inputs = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, tokenize=True,
-        return_dict=True, return_tensors="pt",
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt"
     ).to(model.device)
+
     prompt_len = inputs["input_ids"].shape[-1]
 
     with torch.inference_mode():
-        output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False,
-                                 pad_token_id=tokenizer.pad_token_id)
-    return tokenizer.decode(output[0][prompt_len:], skip_special_tokens=True).strip()
+
+        output = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id
+        )
+
+    generated_tokens = output[0][prompt_len:]
+
+    return tokenizer.decode(
+        generated_tokens,
+        skip_special_tokens=True
+    ).strip()
 
 
-def generate_batch(model, tokenizer, messages_list, max_new_tokens=10):
+def generate_batch(
+    model,
+    tokenizer,
+    prompts,
+    max_new_tokens=100
+):
+
     tokenizer.padding_side = "left"
-    prompts = [tokenizer.apply_chat_template(m, add_generation_prompt=True, tokenize=False) for m in messages_list]
-    inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+
+    messages_list = [
+        _build_messages(prompt)
+        for prompt in prompts
+    ]
+
+    formatted_prompts = [
+        tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=False
+        )
+        for messages in messages_list
+    ]
+
+    inputs = tokenizer(
+        formatted_prompts,
+        return_tensors="pt",
+        padding=True
+    ).to(model.device)
+
     prompt_len = inputs["input_ids"].shape[1]
 
     with torch.inference_mode():
-        output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False,
-                                 pad_token_id=tokenizer.pad_token_id)
-    return [tokenizer.decode(output[i][prompt_len:], skip_special_tokens=True).strip() for i in range(len(prompts))]
+
+        output = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id
+        )
+
+    results = []
+
+    for i in range(len(prompts)):
+
+        generated_tokens = output[i][prompt_len:]
+
+        results.append(
+            tokenizer.decode(
+                generated_tokens,
+                skip_special_tokens=True
+            ).strip()
+        )
+
+    return results
