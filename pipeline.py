@@ -31,8 +31,12 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 DEFAULT_USER_TEMPLATE = (
-    "Classify the following text as 'safe' or 'not safe'and also provide the reason "
-    "\n\nText: {text}"
+    "Classify the following text as 'safe' or 'not safe'. "
+    "Then provide a complete and specific reason for your classification. "
+    "The reason must explain the meaning of any potentially offensive word "
+    "and why it is considered safe or not safe in the given language. "
+    "Do not leave the reason incomplete.\n\n"
+    "Text: {text}"
 )
 
 
