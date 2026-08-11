@@ -31,7 +31,7 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 DEFAULT_USER_TEMPLATE = (
-    "Classify the following text as 'safe' or 'not safe'. "
+    "Classify the following text as 'safe' or 'not safe'and also provide the reason "
     "\n\nText: {text}"
 )
 
