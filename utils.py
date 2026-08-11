@@ -49,14 +49,6 @@ def extract_reason(raw_text):
 
     """
     Extracts the last explanation after 'Reason:'.
-
-    This is useful when the model produces something like:
-
-        Classification: Not Safe
-
-        Reason: The word is offensive...
-
-    Only the explanation is returned.
     """
 
     text = str(
