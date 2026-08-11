@@ -4,10 +4,10 @@ Everything specific to Gemma lives here.
 This file handles:
 
 - Gemma model loading
-- Gemma tokenizer loading
+- Gemma tokenizer
 - Gemma chat template
-- Gemma sequence generation
-- Gemma batch generation
+- sequence generation
+- batch generation
 """
 
 import torch
@@ -24,8 +24,18 @@ def load(
     device_map="auto"
 ):
 
+    print(
+        f"[gemma] loading tokenizer from: "
+        f"{model_path}"
+    )
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_path
+    )
+
+    print(
+        f"[gemma] loading model weights from: "
+        f"{model_path}"
     )
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -50,10 +60,6 @@ def _build_messages(prompt):
 
     """
     Gemma-specific chat format.
-
-    The pipeline gives Gemma one plain prompt.
-    This function converts it into the format
-    expected by Gemma's chat template.
     """
 
     return [
@@ -158,13 +164,11 @@ def generate_batch(
             i
         ][prompt_len:]
 
-        generated_text = tokenizer.decode(
+        text = tokenizer.decode(
             generated_tokens,
             skip_special_tokens=True
         ).strip()
 
-        results.append(
-            generated_text
-        )
+        results.append(text)
 
     return results
