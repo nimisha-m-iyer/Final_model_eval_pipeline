@@ -208,7 +208,7 @@ def evaluate(
 
     max_new_tokens = model_config.get(
         "max_new_tokens",
-        10
+        100
     )
 
     results = []
