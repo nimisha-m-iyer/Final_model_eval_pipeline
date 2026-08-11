@@ -38,6 +38,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "You are an expert multilingual profanity detection system."
 )
 
+
 DEFAULT_USER_TEMPLATE = (
     "Classify the following text as 'safe' or 'not safe'. "
     "Then provide a complete and specific reason for your classification. "
@@ -87,7 +88,9 @@ def _build_messages(text, prompt):
         },
         {
             "role": "user",
-            "content": prompt.format(text=text)
+            "content": prompt.format(
+                text=text
+            )
         },
     ]
 
@@ -449,39 +452,17 @@ def evaluate(
             f"Accuracy: {metrics['accuracy']}"
         )
 
-        # Your current utils.py stores these inside per_class.
-        if "per_class" in metrics:
+        print(
+            f"Precision: {metrics['precision']}"
+        )
 
-            labels = list(
-                metrics["per_class"].keys()
-            )
+        print(
+            f"Recall: {metrics['recall']}"
+        )
 
-            precision = sum(
-                metrics["per_class"][label]["precision"]
-                for label in labels
-            ) / len(labels)
-
-            recall = sum(
-                metrics["per_class"][label]["recall"]
-                for label in labels
-            ) / len(labels)
-
-            f1 = sum(
-                metrics["per_class"][label]["f1"]
-                for label in labels
-            ) / len(labels)
-
-            print(
-                f"Precision: {round(precision, 4)}"
-            )
-
-            print(
-                f"Recall: {round(recall, 4)}"
-            )
-
-            print(
-                f"F1: {round(f1, 4)}"
-            )
+        print(
+            f"F1: {metrics['f1']}"
+        )
 
     else:
 
