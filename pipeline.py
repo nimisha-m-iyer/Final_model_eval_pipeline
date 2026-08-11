@@ -318,27 +318,12 @@ def evaluate(
 
     print("\n===== METRICS =====")
 
-    if metrics:
-
-        print(
-            f"Accuracy: {metrics['accuracy']}"
-        )
-
-        for label, m in metrics["per_class"].items():
-
-            print(
-                f"  [{label}] "
-                f"precision={m['precision']} "
-                f"recall={m['recall']} "
-                f"f1={m['f1']} "
-                f"support={m['support']}"
-            )
-
-    else:
-
-        print(
-            "No gold labels were provided — "
-            "metrics not computed."
-        )
+if metrics:
+    print(f"Accuracy: {metrics['accuracy']}")
+    print(f"Precision: {metrics['precision']}")
+    print(f"Recall: {metrics['recall']}")
+    print(f"F1: {metrics['f1']}")
+else:
+    print("No gold labels were provided — metrics not computed.")
 
     return results, metrics
