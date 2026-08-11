@@ -1,59 +1,169 @@
 """
-Everything specific to Gemma lives here, and only here.
+Everything specific to Gemma lives here.
 
-Gemma's chat template does NOT accept a "system" role message -- its
-template was only trained to understand "user" and "model" turns. So
-any system prompt is merged into the start of the first user message
-before formatting. This is the one Gemma-specific quirk; nothing else
-differs from a standard Hugging Face chat model.
+This file handles:
+
+- Gemma model loading
+- Gemma tokenizer loading
+- Gemma chat template
+- Gemma sequence generation
+- Gemma batch generation
 """
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer
+)
 
 
-def load(model_path, torch_dtype="bfloat16", device_map="auto"):
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path, dtype=getattr(torch, torch_dtype), device_map=device_map
+def load(
+    model_path,
+    torch_dtype="bfloat16",
+    device_map="auto"
+):
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path
     )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        dtype=getattr(
+            torch,
+            torch_dtype
+        ),
+        device_map=device_map
+    )
+
     model.eval()
+
     if tokenizer.pad_token_id is None:
+
         tokenizer.pad_token = tokenizer.eos_token
+
     return model, tokenizer
 
 
-def _merge_system_into_user(messages):
-    system = [m["content"] for m in messages if m["role"] == "system"]
-    rest = [m for m in messages if m["role"] != "system"]
-    if system and rest and rest[0]["role"] == "user":
-        rest[0] = {"role": "user", "content": "\n\n".join(system + [rest[0]["content"]])}
-    return rest
+def _build_messages(prompt):
+
+    """
+    Gemma receives the prompt as a user message.
+
+    The pipeline only supplies a plain string.
+    Gemma handles its own chat-message format here.
+    """
+
+    return [
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
 
 
-def generate_one(model, tokenizer, messages, max_new_tokens=10):
-    messages = _merge_system_into_user(messages)
+def generate_one(
+    model,
+    tokenizer,
+    prompt,
+    max_new_tokens=100
+):
+
+    messages = _build_messages(
+        prompt
+    )
+
     inputs = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, tokenize=True,
-        return_dict=True, return_tensors="pt",
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt"
     ).to(model.device)
-    prompt_len = inputs["input_ids"].shape[-1]
+
+    prompt_len = inputs[
+        "input_ids"
+    ].shape[-1]
 
     with torch.inference_mode():
-        output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False,
-                                 pad_token_id=tokenizer.pad_token_id)
-    return tokenizer.decode(output[0][prompt_len:], skip_special_tokens=True).strip()
+
+        output = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id
+        )
+
+    generated_tokens = output[
+        0
+    ][prompt_len:]
+
+    return tokenizer.decode(
+        generated_tokens,
+        skip_special_tokens=True
+    ).strip()
 
 
-def generate_batch(model, tokenizer, messages_list, max_new_tokens=10):
-    messages_list = [_merge_system_into_user(m) for m in messages_list]
-    tokenizer.padding_side = "left"  # required for correct batched causal-LM generation
+def generate_batch(
+    model,
+    tokenizer,
+    prompts,
+    max_new_tokens=100
+):
 
-    prompts = [tokenizer.apply_chat_template(m, add_generation_prompt=True, tokenize=False) for m in messages_list]
-    inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
-    prompt_len = inputs["input_ids"].shape[1]
+    tokenizer.padding_side = "left"
+
+    messages_list = [
+        _build_messages(prompt)
+        for prompt in prompts
+    ]
+
+    formatted_prompts = [
+        tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=False
+        )
+        for messages in messages_list
+    ]
+
+    inputs = tokenizer(
+        formatted_prompts,
+        return_tensors="pt",
+        padding=True
+    ).to(model.device)
+
+    prompt_len = inputs[
+        "input_ids"
+    ].shape[1]
 
     with torch.inference_mode():
-        output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False,
-                                 pad_token_id=tokenizer.pad_token_id)
-    return [tokenizer.decode(output[i][prompt_len:], skip_special_tokens=True).strip() for i in range(len(prompts))]
+
+        output = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id
+        )
+
+    results = []
+
+    for i in range(
+        len(prompts)
+    ):
+
+        generated_tokens = output[
+            i
+        ][prompt_len:]
+
+        generated_text = tokenizer.decode(
+            generated_tokens,
+            skip_special_tokens=True
+        ).strip()
+
+        results.append(
+            generated_text
+        )
+
+    return results
