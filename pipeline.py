@@ -14,13 +14,23 @@ Example:
         }
     ]
 
+Output:
+    - predicted label
+    - reason
+    - CSV
+    - accuracy
+    - precision
+    - recall
+    - F1
+
 The model is loaded exactly once and reused
 for all records and batches.
 """
 
 import csv
-import importlib
 import os
+
+from models import gemma, qwen, aya, llama
 
 from utils import (
     normalize_label,
@@ -29,19 +39,89 @@ from utils import (
 )
 
 
-def _load_model_module(model_type):
+# ============================================================
+# MODEL MODULES
+# ============================================================
+#
+# This maps the model name/type to its Python file.
+#
+# "gemma" -> models/gemma.py
+# "qwen"  -> models/qwen.py
+# "aya"   -> models/aya.py
+# "llama" -> models/llama.py
+#
+# It does NOT load the model weights.
+# The model weights are loaded later using model_path.
+# ============================================================
+
+MODEL_MODULES = {
+    "gemma": gemma,
+    "qwen": qwen,
+    "aya": aya,
+    "llama": llama,
+}
+
+
+def _pick_module(model_path, model_type=None):
     """
-    Loads the model-specific file.
+    Decide which model-specific Python file to use.
+
+    If model_type is given:
+        use it directly.
+
+    Otherwise:
+        try to detect the model type from model_path.
 
     Example:
-        "gemma" -> models/gemma.py
-        "qwen"  -> models/qwen.py
-        "aya"   -> models/aya.py
-        "llama" -> models/llama.py
+
+        model_path = "google/gemma-3-4b-it"
+
+        -> "gemma" found in path
+        -> models/gemma.py
+
     """
 
-    return importlib.import_module(
-        f"models.{model_type.lower()}"
+    # --------------------------------------------------------
+    # Explicit model type
+    # --------------------------------------------------------
+
+    if model_type:
+
+        module = MODEL_MODULES.get(
+            model_type.lower()
+        )
+
+        if module is None:
+
+            raise ValueError(
+                f"Unknown model_type '{model_type}'. "
+                f"Use one of {list(MODEL_MODULES.keys())}"
+            )
+
+        return module
+
+    # --------------------------------------------------------
+    # Try to detect model type from model path
+    # --------------------------------------------------------
+
+    name = model_path.lower()
+
+    for key, module in MODEL_MODULES.items():
+
+        if key in name:
+
+            return module
+
+    # --------------------------------------------------------
+    # Could not determine model
+    # --------------------------------------------------------
+
+    raise ValueError(
+        f"Could not detect model type from '{model_path}'. "
+        f"Either include one of "
+        f"{list(MODEL_MODULES.keys())} "
+        f"in the path or provide "
+        f"model_config['model_type'] explicitly."
     )
 
 
@@ -114,9 +194,13 @@ def evaluate(
 
         {
             "model_path": "google/gemma-3-4b-it",
+
             "model_type": "gemma",
+
             "torch_dtype": "bfloat16",
+
             "device_map": "auto",
+
             "max_new_tokens": 100
         }
 
@@ -124,7 +208,7 @@ def evaluate(
     prompt:
         One complete prompt supplied by the user.
 
-        {text} is replaced with record["text"].
+        {text} is replaced by record["text"].
 
 
     mode:
@@ -139,30 +223,39 @@ def evaluate(
         Optional path for the predictions CSV.
     """
 
-    # ==================================================
-    # MODEL CONFIG
-    # ==================================================
+    # ========================================================
+    # MODEL CONFIGURATION
+    # ========================================================
 
     model_path = model_config["model_path"]
 
-    model_type = model_config["model_type"]
+    model_type = model_config.get(
+        "model_type"
+    )
 
     max_new_tokens = model_config.get(
         "max_new_tokens",
         100
     )
 
-    # ==================================================
-    # LOAD MODEL-SPECIFIC MODULE
-    # ==================================================
+    # ========================================================
+    # SELECT MODEL-SPECIFIC MODULE
+    # ========================================================
 
-    module = _load_model_module(
+    module = _pick_module(
+        model_path,
         model_type
     )
 
-    # ==================================================
-    # LOAD MODEL ONCE
-    # ==================================================
+    # ========================================================
+    # LOAD MODEL
+    # ========================================================
+    #
+    # THIS HAPPENS ONLY ONCE.
+    #
+    # The same model and tokenizer are reused
+    # for every sequence or every batch.
+    # ========================================================
 
     print(
         f"[pipeline] loading model from: {model_path}"
@@ -186,17 +279,26 @@ def evaluate(
 
     results = []
 
-    # ==================================================
+    # ========================================================
     # SEQUENCE MODE
-    # ==================================================
+    # ========================================================
 
     if mode == "sequence":
 
         for i, record in enumerate(records):
 
+            # Insert the current text into the
+            # user-provided prompt.
+
             current_prompt = prompt.format(
                 text=record["text"]
             )
+
+            # Model-specific file handles:
+            #
+            # - chat template
+            # - tokenization
+            # - generation
 
             raw = module.generate_one(
                 model,
@@ -218,19 +320,29 @@ def evaluate(
                     "id",
                     str(i)
                 ),
+
                 "text": record["text"],
+
                 "gold_label": record.get(
                     "label"
                 ),
+
                 "language": record.get(
                     "language"
                 ),
+
                 "raw_model_output": raw,
+
                 "predicted_label": predicted_label,
+
                 "reason": reason
             }
 
             results.append(result)
+
+            # ------------------------------------------------
+            # SHOW RESULT IN NOTEBOOK
+            # ------------------------------------------------
 
             print(
                 f"\nID: {result['id']}"
@@ -253,9 +365,9 @@ def evaluate(
                     f"{i + 1}/{len(records)}"
                 )
 
-    # ==================================================
+    # ========================================================
     # BATCH MODE
-    # ==================================================
+    # ========================================================
 
     elif mode == "batch":
 
@@ -269,12 +381,16 @@ def evaluate(
                 start:start + batch_size
             ]
 
+            # Build one prompt per record.
+
             prompts = [
                 prompt.format(
                     text=record["text"]
                 )
                 for record in chunk
             ]
+
+            # Model-specific batch generation.
 
             raw_list = module.generate_batch(
                 model,
@@ -300,19 +416,29 @@ def evaluate(
                         "id",
                         str(start + index)
                     ),
+
                     "text": record["text"],
+
                     "gold_label": record.get(
                         "label"
                     ),
+
                     "language": record.get(
                         "language"
                     ),
+
                     "raw_model_output": raw,
+
                     "predicted_label": predicted_label,
+
                     "reason": reason
                 }
 
                 results.append(result)
+
+                # ------------------------------------------------
+                # SHOW RESULT IN NOTEBOOK
+                # ------------------------------------------------
 
                 print(
                     f"\nID: {result['id']}"
@@ -340,9 +466,9 @@ def evaluate(
             "mode must be 'sequence' or 'batch'"
         )
 
-    # ==================================================
+    # ========================================================
     # SAVE CSV
-    # ==================================================
+    # ========================================================
 
     if output_csv is None:
 
@@ -362,9 +488,9 @@ def evaluate(
         output_csv
     )
 
-    # ==================================================
+    # ========================================================
     # METRICS
-    # ==================================================
+    # ========================================================
 
     metrics = compute_metrics(
         results
