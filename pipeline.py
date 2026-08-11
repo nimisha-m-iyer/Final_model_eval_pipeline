@@ -1,18 +1,22 @@
 """
-MINIMAL LLM EVALUATION PIPELINE
+======================================================================
+ MINIMAL LLM EVALUATION PIPELINE
+
+ Input:  a list of dicts, e.g. [{"id": "1", "text": "...", "label": "safe"}]
+ Output: a list of dicts with predictions, saved as CSV, metrics printed
+
+ The model is loaded exactly ONCE inside evaluate() and reused for every
+ record / every batch -- it is never reloaded mid-run.
+======================================================================
 """
 
 import csv
 import os
 
 from models import gemma, qwen, aya, llama
-from utils import parse_model_output, compute_metrics
+from utils import normalize_label, compute_metrics
 
-
-# ---------------------------------------------------------
-# MODEL MODULES
-# ---------------------------------------------------------
-
+# Add a new model by adding one line here, pointing at its own file in models/
 MODEL_MODULES = {
     "gemma": gemma,
     "qwen": qwen,
@@ -20,45 +24,21 @@ MODEL_MODULES = {
     "llama": llama,
 }
 
+DEFAULT_SYSTEM_PROMPT = "You are an expert multilingual profanity detection system."
 
-# ---------------------------------------------------------
-# DEFAULT PROMPT
-# ---------------------------------------------------------
-
-DEFAULT_SYSTEM_PROMPT = (
-    "You are an expert multilingual profanity detection system."
+DEFAULT_USER_TEMPLATE = (
+    "Classify the following text as 'safe' or 'not safe'. "
+    "Reply with ONLY the label.\n\nText: {text}"
 )
 
-DEFAULT_USER_TEMPLATE = """
-Classify the following text as either "safe" or "not safe".
-
-Return ONLY valid JSON in exactly this format:
-
-{
-    "label": "safe",
-    "reason": "short explanation"
-}
-
-The label must be exactly one of:
-- safe
-- not safe
-
-Text:
-{text}
-"""
-
-
-# ---------------------------------------------------------
-# SELECT MODEL
-# ---------------------------------------------------------
 
 def _pick_module(model_path, model_type=None):
+    """
+    Decides which models/<x>.py file handles this model.
+    """
 
     if model_type:
-
-        module = MODEL_MODULES.get(
-            model_type.lower()
-        )
+        module = MODEL_MODULES.get(model_type.lower())
 
         if module is None:
             raise ValueError(
@@ -71,22 +51,17 @@ def _pick_module(model_path, model_type=None):
     name = model_path.lower()
 
     for key, module in MODEL_MODULES.items():
-
         if key in name:
             return module
 
     raise ValueError(
         f"Could not detect model type from '{model_path}'. "
-        f"Pass model_config['model_type'] explicitly."
+        f"Either include one of {list(MODEL_MODULES.keys())} in the path, "
+        f"or pass model_config['model_type'] explicitly."
     )
 
 
-# ---------------------------------------------------------
-# BUILD PROMPT
-# ---------------------------------------------------------
-
 def _build_messages(text, prompt_config):
-
     system_prompt = prompt_config.get(
         "system_prompt",
         DEFAULT_SYSTEM_PROMPT
@@ -98,30 +73,18 @@ def _build_messages(text, prompt_config):
     )
 
     return [
-        {
-            "role": "system",
-            "content": system_prompt
-        },
-        {
-            "role": "user",
-            "content": user_template.format(
-                text=text
-            )
-        }
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_template.format(text=text)},
     ]
 
 
-# ---------------------------------------------------------
-# SAVE CSV
-# ---------------------------------------------------------
-
 def _save_csv(results, output_csv):
-
     fieldnames = [
         "id",
-        "predicted_label",
-        "reason",
-        "language"
+        "text",
+        "gold_label",
+        "raw_model_output",
+        "predicted_label"
     ]
 
     os.makedirs(
@@ -143,57 +106,16 @@ def _save_csv(results, output_csv):
 
         writer.writeheader()
 
-        for result in results:
-
+        for r in results:
             writer.writerow({
-                "id": result.get("id", ""),
-                "predicted_label": result.get(
-                    "predicted_label",
-                    ""
-                ),
-                "reason": result.get(
-                    "reason",
-                    ""
-                ),
-                "language": result.get(
-                    "language",
-                    ""
-                )
+                k: r.get(k)
+                for k in fieldnames
             })
 
     print(
-        f"\n[pipeline] predictions saved -> {output_csv}"
+        f"[pipeline] predictions saved -> {output_csv}"
     )
 
-
-# ---------------------------------------------------------
-# PRINT PREDICTIONS
-# ---------------------------------------------------------
-
-def _print_prediction(result):
-
-    print(
-        f"\nID        : {result['id']}"
-    )
-
-    print(
-        f"Language  : {result['language']}"
-    )
-
-    print(
-        f"Prediction: {result['predicted_label']}"
-    )
-
-    print(
-        f"Reason    : {result['reason']}"
-    )
-
-    print("-" * 60)
-
-
-# ---------------------------------------------------------
-# MAIN EVALUATION
-# ---------------------------------------------------------
 
 def evaluate(
     records,
@@ -203,6 +125,20 @@ def evaluate(
     batch_size=8,
     output_csv=None
 ):
+    """
+    records      : list of dicts. Each needs "text". "id" and "label" optional.
+    model_config : {
+        "model_path": "<HF hub id or local folder path>",
+        "model_type": "gemma" | "qwen" | "aya" | "llama",
+        "torch_dtype": "bfloat16",
+        "device_map": "auto",
+        "max_new_tokens": 10,
+    }
+    prompt_config: {"system_prompt": "...", "user_template": "...{text}..."}
+    mode         : "sequence" or "batch"
+    batch_size   : only used when mode == "batch"
+    output_csv   : where to save predictions
+    """
 
     prompt_config = prompt_config or {}
 
@@ -213,12 +149,10 @@ def evaluate(
         model_config.get("model_type")
     )
 
-    # -----------------------------------------------------
-    # LOAD MODEL ONCE
-    # -----------------------------------------------------
+    # ---- MODEL LOADED HERE, EXACTLY ONCE ----
 
     print(
-        f"\n[pipeline] loading model from: {model_path}"
+        f"[pipeline] loading model from: {model_path}"
     )
 
     model, tokenizer = module.load(
@@ -230,24 +164,21 @@ def evaluate(
         model_config.get(
             "device_map",
             "auto"
-        )
+        ),
     )
 
     print(
-        "[pipeline] model loaded. "
-        "Starting evaluation..."
+        "[pipeline] model loaded. Starting evaluation..."
     )
+
+    # ------------------------------------------
 
     max_new_tokens = model_config.get(
         "max_new_tokens",
-        50
+        10
     )
 
     results = []
-
-    # -----------------------------------------------------
-    # SEQUENCE
-    # -----------------------------------------------------
 
     if mode == "sequence":
 
@@ -265,9 +196,7 @@ def evaluate(
                 max_new_tokens
             )
 
-            predicted_label, reason = (
-                parse_model_output(raw)
-            )
+            predicted_label = normalize_label(raw)
 
             result = {
                 "id": record.get(
@@ -276,22 +205,28 @@ def evaluate(
                 ),
                 "text": record["text"],
                 "gold_label": record.get("label"),
+                "raw_model_output": raw,
                 "predicted_label": predicted_label,
-                "reason": reason,
-                "language": record.get(
-                    "language",
-                    ""
-                )
             }
 
             results.append(result)
 
-            # SHOW RESULT IN EDITOR
-            _print_prediction(result)
+            # ONLY NEW PART:
+            print(
+                f"\nID: {result['id']}"
+            )
+            print(
+                f"Predicted label: {result['predicted_label']}"
+            )
+            print(
+                f"Reason: {result['raw_model_output']}"
+            )
 
-    # -----------------------------------------------------
-    # BATCH
-    # -----------------------------------------------------
+            if (i + 1) % 20 == 0:
+                print(
+                    f"[pipeline] processed "
+                    f"{i + 1}/{len(records)}"
+                )
 
     elif mode == "batch":
 
@@ -305,18 +240,12 @@ def evaluate(
                 start:start + batch_size
             ]
 
-            print(
-                f"\n[pipeline] "
-                f"processing batch "
-                f"{start // batch_size + 1}"
-            )
-
             messages_list = [
                 _build_messages(
-                    record["text"],
+                    r["text"],
                     prompt_config
                 )
-                for record in chunk
+                for r in chunk
             ]
 
             raw_list = module.generate_batch(
@@ -330,9 +259,7 @@ def evaluate(
                 zip(chunk, raw_list)
             ):
 
-                predicted_label, reason = (
-                    parse_model_output(raw)
-                )
+                predicted_label = normalize_label(raw)
 
                 result = {
                     "id": record.get(
@@ -341,18 +268,22 @@ def evaluate(
                     ),
                     "text": record["text"],
                     "gold_label": record.get("label"),
+                    "raw_model_output": raw,
                     "predicted_label": predicted_label,
-                    "reason": reason,
-                    "language": record.get(
-                        "language",
-                        ""
-                    )
                 }
 
                 results.append(result)
 
-                # SHOW RESULT IN EDITOR
-                _print_prediction(result)
+                # ONLY NEW PART:
+                print(
+                    f"\nID: {result['id']}"
+                )
+                print(
+                    f"Predicted label: {result['predicted_label']}"
+                )
+                print(
+                    f"Reason: {result['raw_model_output']}"
+                )
 
             print(
                 f"[pipeline] processed "
@@ -361,14 +292,9 @@ def evaluate(
             )
 
     else:
-
         raise ValueError(
             "mode must be 'sequence' or 'batch'"
         )
-
-    # -----------------------------------------------------
-    # SAVE CSV
-    # -----------------------------------------------------
 
     if output_csv is None:
 
@@ -388,41 +314,31 @@ def evaluate(
         output_csv
     )
 
-    # -----------------------------------------------------
-    # METRICS
-    # -----------------------------------------------------
-
     metrics = compute_metrics(results)
 
-    print("\n")
-    print("=" * 60)
-    print("FINAL METRICS")
-    print("=" * 60)
+    print("\n===== METRICS =====")
 
     if metrics:
 
         print(
-            f"Accuracy  : {metrics['accuracy']}"
+            f"Accuracy: {metrics['accuracy']}"
         )
 
-        print(
-            f"Precision : {metrics['precision']}"
-        )
+        for label, m in metrics["per_class"].items():
 
-        print(
-            f"Recall    : {metrics['recall']}"
-        )
-
-        print(
-            f"F1        : {metrics['f1']}"
-        )
+            print(
+                f"  [{label}] "
+                f"precision={m['precision']} "
+                f"recall={m['recall']} "
+                f"f1={m['f1']} "
+                f"support={m['support']}"
+            )
 
     else:
 
         print(
-            "No gold labels were provided."
+            "No gold labels were provided — "
+            "metrics not computed."
         )
-
-    print("=" * 60)
 
     return results, metrics
