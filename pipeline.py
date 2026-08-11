@@ -32,7 +32,7 @@ DEFAULT_SYSTEM_PROMPT = (
 
 DEFAULT_USER_TEMPLATE = (
     "Classify the following text as 'safe' or 'not safe'. "
-    "Reply with ONLY the label.\n\nText: {text}"
+    "\n\nText: {text}"
 )
 
 
