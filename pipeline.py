@@ -16,6 +16,7 @@ import os
 from models import gemma, qwen, aya, llama
 from utils import normalize_label, compute_metrics
 
+
 # Add a new model by adding one line here, pointing at its own file in models/
 MODEL_MODULES = {
     "gemma": gemma,
@@ -24,7 +25,10 @@ MODEL_MODULES = {
     "llama": llama,
 }
 
-DEFAULT_SYSTEM_PROMPT = "You are an expert multilingual profanity detection system."
+
+DEFAULT_SYSTEM_PROMPT = (
+    "You are an expert multilingual profanity detection system."
+)
 
 DEFAULT_USER_TEMPLATE = (
     "Classify the following text as 'safe' or 'not safe'. "
@@ -35,10 +39,16 @@ DEFAULT_USER_TEMPLATE = (
 def _pick_module(model_path, model_type=None):
     """
     Decides which models/<x>.py file handles this model.
+    - If model_type is given explicitly, that always wins.
+    - Otherwise, matched by checking if a known keyword appears
+      in the model_path string.
     """
 
     if model_type:
-        module = MODEL_MODULES.get(model_type.lower())
+
+        module = MODEL_MODULES.get(
+            model_type.lower()
+        )
 
         if module is None:
             raise ValueError(
@@ -51,6 +61,7 @@ def _pick_module(model_path, model_type=None):
     name = model_path.lower()
 
     for key, module in MODEL_MODULES.items():
+
         if key in name:
             return module
 
@@ -62,6 +73,7 @@ def _pick_module(model_path, model_type=None):
 
 
 def _build_messages(text, prompt_config):
+
     system_prompt = prompt_config.get(
         "system_prompt",
         DEFAULT_SYSTEM_PROMPT
@@ -73,12 +85,21 @@ def _build_messages(text, prompt_config):
     )
 
     return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_template.format(text=text)},
+        {
+            "role": "system",
+            "content": system_prompt
+        },
+        {
+            "role": "user",
+            "content": user_template.format(
+                text=text
+            )
+        },
     ]
 
 
 def _save_csv(results, output_csv):
+
     fieldnames = [
         "id",
         "text",
@@ -107,6 +128,7 @@ def _save_csv(results, output_csv):
         writer.writeheader()
 
         for r in results:
+
             writer.writerow({
                 k: r.get(k)
                 for k in fieldnames
@@ -127,6 +149,7 @@ def evaluate(
 ):
     """
     records      : list of dicts. Each needs "text". "id" and "label" optional.
+
     model_config : {
         "model_path": "<HF hub id or local folder path>",
         "model_type": "gemma" | "qwen" | "aya" | "llama",
@@ -134,10 +157,18 @@ def evaluate(
         "device_map": "auto",
         "max_new_tokens": 10,
     }
-    prompt_config: {"system_prompt": "...", "user_template": "...{text}..."}
-    mode         : "sequence" or "batch"
-    batch_size   : only used when mode == "batch"
-    output_csv   : where to save predictions
+
+    prompt_config:
+        {"system_prompt": "...", "user_template": "...{text}..."}
+
+    mode:
+        "sequence" or "batch"
+
+    batch_size:
+        only used when mode == "batch"
+
+    output_csv:
+        where to save predictions
     """
 
     prompt_config = prompt_config or {}
@@ -149,7 +180,9 @@ def evaluate(
         model_config.get("model_type")
     )
 
-    # ---- MODEL LOADED HERE, EXACTLY ONCE ----
+    # ------------------------------------------------------
+    # MODEL LOADED HERE, EXACTLY ONCE
+    # ------------------------------------------------------
 
     print(
         f"[pipeline] loading model from: {model_path}"
@@ -171,7 +204,7 @@ def evaluate(
         "[pipeline] model loaded. Starting evaluation..."
     )
 
-    # ------------------------------------------
+    # ------------------------------------------------------
 
     max_new_tokens = model_config.get(
         "max_new_tokens",
@@ -179,6 +212,10 @@ def evaluate(
     )
 
     results = []
+
+    # ======================================================
+    # SEQUENCE MODE
+    # ======================================================
 
     if mode == "sequence":
 
@@ -211,22 +248,36 @@ def evaluate(
 
             results.append(result)
 
-            # ONLY NEW PART:
+            # --------------------------------------------------
+            # SHOW PREDICTION IN EDITOR
+            # --------------------------------------------------
+
             print(
                 f"\nID: {result['id']}"
             )
+
             print(
-                f"Predicted label: {result['predicted_label']}"
-            )
-            print(
-                f"Reason: {result['raw_model_output']}"
+                f"Predicted label: "
+                f"{result['predicted_label']}"
             )
 
+            print(
+                f"Reason: "
+                f"{result['raw_model_output']}"
+            )
+
+            # --------------------------------------------------
+
             if (i + 1) % 20 == 0:
+
                 print(
                     f"[pipeline] processed "
                     f"{i + 1}/{len(records)}"
                 )
+
+    # ======================================================
+    # BATCH MODE
+    # ======================================================
 
     elif mode == "batch":
 
@@ -248,6 +299,7 @@ def evaluate(
                 for r in chunk
             ]
 
+            # Same model/tokenizer reused
             raw_list = module.generate_batch(
                 model,
                 tokenizer,
@@ -274,16 +326,25 @@ def evaluate(
 
                 results.append(result)
 
-                # ONLY NEW PART:
+                # --------------------------------------------------
+                # SHOW PREDICTION IN EDITOR
+                # --------------------------------------------------
+
                 print(
                     f"\nID: {result['id']}"
                 )
+
                 print(
-                    f"Predicted label: {result['predicted_label']}"
+                    f"Predicted label: "
+                    f"{result['predicted_label']}"
                 )
+
                 print(
-                    f"Reason: {result['raw_model_output']}"
+                    f"Reason: "
+                    f"{result['raw_model_output']}"
                 )
+
+                # --------------------------------------------------
 
             print(
                 f"[pipeline] processed "
@@ -291,10 +352,19 @@ def evaluate(
                 f"{len(records)}"
             )
 
+    # ======================================================
+    # INVALID MODE
+    # ======================================================
+
     else:
+
         raise ValueError(
             "mode must be 'sequence' or 'batch'"
         )
+
+    # ======================================================
+    # SAVE CSV
+    # ======================================================
 
     if output_csv is None:
 
@@ -314,21 +384,45 @@ def evaluate(
         output_csv
     )
 
-    metrics = compute_metrics(results)
+    # ======================================================
+    # METRICS
+    # ======================================================
 
-        metrics = compute_metrics(results)
+    metrics = compute_metrics(
+        results
+    )
 
-    print("\n===== METRICS =====")
+    print(
+        "\n===== METRICS ====="
+    )
 
     if metrics:
-        print(f"Accuracy: {metrics['accuracy']}")
-        print(f"Precision: {metrics['precision']}")
-        print(f"Recall: {metrics['recall']}")
-        print(f"F1: {metrics['f1']}")
+
+        print(
+            f"Accuracy: {metrics['accuracy']}"
+        )
+
+        print(
+            f"Precision: {metrics['precision']}"
+        )
+
+        print(
+            f"Recall: {metrics['recall']}"
+        )
+
+        print(
+            f"F1: {metrics['f1']}"
+        )
+
     else:
+
         print(
             "No gold labels were provided — "
             "metrics not computed."
         )
+
+    # ======================================================
+    # RETURN
+    # ======================================================
 
     return results, metrics
