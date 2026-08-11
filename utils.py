@@ -18,14 +18,6 @@ LABELS = [
 
 def normalize_label(raw_text):
 
-    """
-    Converts model output into:
-
-        safe
-        not safe
-        unknown
-    """
-
     text = str(
         raw_text
     ).strip().lower()
@@ -48,7 +40,19 @@ def normalize_label(raw_text):
 def extract_reason(raw_text):
 
     """
-    Extracts the last explanation after 'Reason:'.
+    Extract the final reason from the model output.
+
+    If the model says:
+
+        Classification: Not Safe
+
+        Reason: blah blah
+
+    only:
+
+        blah blah
+
+    is returned.
     """
 
     text = str(
@@ -77,17 +81,6 @@ def extract_reason(raw_text):
 
 
 def compute_metrics(results):
-
-    """
-    Computes:
-
-        accuracy
-        precision
-        recall
-        f1
-
-    using macro averaging.
-    """
 
     pairs = [
         (
@@ -132,14 +125,17 @@ def compute_metrics(results):
             accuracy,
             4
         ),
+
         "precision": round(
             precision,
             4
         ),
+
         "recall": round(
             recall,
             4
         ),
+
         "f1": round(
             f1,
             4
