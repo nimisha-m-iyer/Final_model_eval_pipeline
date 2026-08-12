@@ -13,15 +13,14 @@ pip install -r requirements.txt
 
 4.Edit config.json to select the required:
 
-Model and model path
-Prompt
-Mode (batch / sequence)
-Batch size
-Generation parameters
-4. Run evaluation
-from pipeline import evaluate
+    Model and model path
+    Prompt
+    Mode (batch / sequence)
+    Batch size
+    Generation parameters
 
-5. From Pipeline import evaluate function
+5. From pipeline import evaluate
+
 
 6.Pass the inputs as "records" in dictionary format
 
