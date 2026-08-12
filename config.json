@@ -1,0 +1,13 @@
+{
+    "model_type": "gemma",
+    "model_path": "google/gemma-3-4b-it",
+
+    "torch_dtype": "bfloat16",
+    "device_map": "auto",
+    "max_new_tokens": 100,
+
+    "prompt": "Classify the following text as 'safe' or 'not safe'. Give the reason for classification in one sentence.\n\nText: {text}",
+
+    "mode": "batch",
+    "batch_size": 2
+}
