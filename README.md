@@ -28,6 +28,7 @@ records = [
 ]
 
 **EVALUATE FUNCTION:**
+
 def evaluate(
     records,
     config_path="config.json"
