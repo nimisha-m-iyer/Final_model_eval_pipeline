@@ -1,8 +1,7 @@
 """
-Everything specific to Gemma lives here.
+Gemma-specific implementation.
 
-This file handles:
-
+This file contains:
 - Gemma model loading
 - Gemma tokenizer
 - Gemma chat template
@@ -19,7 +18,7 @@ from transformers import (
 
 
 # ========================================================
-# MODEL LOADING
+# LOAD
 # ========================================================
 
 def load(
@@ -55,7 +54,9 @@ def load(
 
     if tokenizer.pad_token_id is None:
 
-        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token = (
+            tokenizer.eos_token
+        )
 
     return model, tokenizer
 
@@ -181,6 +182,8 @@ def generate_batch(
             skip_special_tokens=True
         ).strip()
 
-        results.append(text)
+        results.append(
+            text
+        )
 
     return results
