@@ -27,6 +27,9 @@ records = [
     {"id": "2", "text": "Good morning!"}
 ]
 
+**EVALUATE FUNCTION:**
+
+
 results = evaluate(records)
 
 The pipeline reads all configuration from config.json and returns the model's raw responses:
