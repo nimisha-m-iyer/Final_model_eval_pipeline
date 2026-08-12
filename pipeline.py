@@ -1,22 +1,27 @@
 """
-Minimal LLM Evaluation Pipeline
+Minimal LLM evaluation pipeline.
+
+The configuration is read from config.json.
 
 Input:
-    [
-        {"id": "1", "text": "Hello"},
-        {"id": "2", "text": "Some text"}
-    ]
+    list of dictionaries containing:
+        id
+        text
 
 Output:
-    [
-        {"id": "1", "response": "..."},
-        {"id": "2", "response": "..."}
-    ]
-
-The model is loaded exactly once per evaluate() call.
+    list of dictionaries containing:
+        id
+        response
 """
 
-from models import gemma, qwen, aya, llama
+import json
+
+from models import (
+    gemma,
+    qwen,
+    aya,
+    llama
+)
 
 
 # ========================================================
@@ -32,91 +37,86 @@ MODEL_MODULES = {
 
 
 # ========================================================
-# EVALUATION
+# LOAD CONFIG
+# ========================================================
+
+def load_config(config_path="config.json"):
+
+    with open(
+        config_path,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        return json.load(f)
+
+
+# ========================================================
+# EVALUATE
 # ========================================================
 
 def evaluate(
     records,
-    model_config,
-    prompt,
-    mode="sequence",
-    batch_size=8
+    config_path="config.json"
 ):
 
-    """
-    records:
-        List of dictionaries.
+    # ----------------------------------------------------
+    # Read configuration
+    # ----------------------------------------------------
 
-        Example:
-        [
-            {"id": "1", "text": "Hello"},
-            {"id": "2", "text": "Some text"}
-        ]
+    config = load_config(
+        config_path
+    )
 
-    model_config:
-        Example:
-        {
-            "model_type": "gemma",
-            "model_path": "google/gemma-3-4b-it",
-            "torch_dtype": "bfloat16",
-            "device_map": "auto",
-            "max_new_tokens": 100
-        }
+    model_type = config["model_type"]
+    model_path = config["model_path"]
 
-    prompt:
-        Prompt string containing {text}.
-
-        Example:
-        "Classify this text:\n\nText: {text}"
-
-    mode:
-        "sequence" or "batch"
-
-    batch_size:
-        Used only when mode="batch".
-
-    Returns:
-        [
-            {
-                "id": "...",
-                "response": "raw model output"
-            }
-        ]
-    """
-
-    # ====================================================
-    # 1. READ MODEL CONFIG
-    # ====================================================
-
-    model_type = model_config["model_type"]
-    model_path = model_config["model_path"]
-
-    module = MODEL_MODULES[model_type]
-
-
-    # ====================================================
-    # 2. MODEL SETTINGS
-    # ====================================================
-
-    torch_dtype = model_config.get(
+    torch_dtype = config.get(
         "torch_dtype",
         "bfloat16"
     )
 
-    device_map = model_config.get(
+    device_map = config.get(
         "device_map",
         "auto"
     )
 
-    max_new_tokens = model_config.get(
+    max_new_tokens = config.get(
         "max_new_tokens",
         100
     )
 
+    prompt = config["prompt"]
 
-    # ====================================================
-    # 3. LOAD MODEL
-    # ====================================================
+    mode = config.get(
+        "mode",
+        "sequence"
+    )
+
+    batch_size = config.get(
+        "batch_size",
+        1
+    )
+
+    # ----------------------------------------------------
+    # Select model-specific file
+    # ----------------------------------------------------
+
+    if model_type not in MODEL_MODULES:
+
+        raise ValueError(
+            f"Unknown model_type: {model_type}. "
+            f"Choose from: "
+            f"{list(MODEL_MODULES.keys())}"
+        )
+
+    module = MODEL_MODULES[
+        model_type
+    ]
+
+    # ----------------------------------------------------
+    # Load model ONCE
+    # ----------------------------------------------------
 
     print(
         f"[pipeline] model type: {model_type}"
@@ -137,20 +137,17 @@ def evaluate(
     )
 
     print(
-        "[pipeline] model loaded. "
-        "Starting evaluation..."
+        "[pipeline] model loaded."
     )
 
-
-    # ====================================================
-    # 4. STORE RESULTS
-    # ====================================================
+    # ----------------------------------------------------
+    # RESULTS
+    # ----------------------------------------------------
 
     results = []
 
-
     # ====================================================
-    # 5. SEQUENCE MODE
+    # SEQUENCE MODE
     # ====================================================
 
     if mode == "sequence":
@@ -161,7 +158,7 @@ def evaluate(
                 text=record["text"]
             )
 
-            raw_response = module.generate_one(
+            response = module.generate_one(
                 model,
                 tokenizer,
                 current_prompt,
@@ -173,29 +170,23 @@ def evaluate(
                     "id",
                     str(i)
                 ),
-
-                "response": raw_response
+                "response": response
             }
 
-            results.append(result)
-
-            print()
-            print(
-                f"ID: {result['id']}"
+            results.append(
+                result
             )
+
+            print(
+                f"\nID: {result['id']}"
+            )
+
             print(
                 f"Response: {result['response']}"
             )
 
-        print()
-        print(
-            f"[pipeline] processed "
-            f"{len(results)}/{len(records)}"
-        )
-
-
     # ====================================================
-    # 6. BATCH MODE
+    # BATCH MODE
     # ====================================================
 
     elif mode == "batch":
@@ -226,7 +217,7 @@ def evaluate(
 
             for index, (
                 record,
-                raw_response
+                response
             ) in enumerate(
                 zip(
                     chunk,
@@ -239,40 +230,31 @@ def evaluate(
                         "id",
                         str(start + index)
                     ),
-
-                    "response": raw_response
+                    "response": response
                 }
 
-                results.append(result)
-
-                print()
-                print(
-                    f"ID: {result['id']}"
+                results.append(
+                    result
                 )
+
+                print(
+                    f"\nID: {result['id']}"
+                )
+
                 print(
                     f"Response: {result['response']}"
                 )
 
             print(
-                f"[pipeline] processed "
+                f"\n[pipeline] processed "
                 f"{min(start + batch_size, len(records))}/"
                 f"{len(records)}"
             )
-
-
-    # ====================================================
-    # 7. INVALID MODE
-    # ====================================================
 
     else:
 
         raise ValueError(
             "mode must be 'sequence' or 'batch'"
         )
-
-
-    # ====================================================
-    # 8. RETURN RAW RESULTS
-    # ====================================================
 
     return results
