@@ -1,0 +1,6 @@
+torch
+transformers>=4.45.0
+accelerate
+bitsandbytes
+sentencepiece
+huggingface_hub
