@@ -18,6 +18,10 @@ from transformers import (
 )
 
 
+# ========================================================
+# MODEL LOADING
+# ========================================================
+
 def load(
     model_path,
     torch_dtype="bfloat16",
@@ -56,11 +60,11 @@ def load(
     return model, tokenizer
 
 
-def _build_messages(prompt):
+# ========================================================
+# GEMMA CHAT FORMAT
+# ========================================================
 
-    """
-    Gemma-specific chat format.
-    """
+def _build_messages(prompt):
 
     return [
         {
@@ -69,6 +73,10 @@ def _build_messages(prompt):
         }
     ]
 
+
+# ========================================================
+# SEQUENCE GENERATION
+# ========================================================
 
 def generate_one(
     model,
@@ -111,6 +119,10 @@ def generate_one(
         skip_special_tokens=True
     ).strip()
 
+
+# ========================================================
+# BATCH GENERATION
+# ========================================================
 
 def generate_batch(
     model,
