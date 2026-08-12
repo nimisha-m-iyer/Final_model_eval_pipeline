@@ -1,4 +1,4 @@
-LLM Model Evaluation Pipeline
+**LLM Model Evaluation Pipeline**
 
 A modular pipeline for evaluating LLMs using a common evaluate() function.
 
