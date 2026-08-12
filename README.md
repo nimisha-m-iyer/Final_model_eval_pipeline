@@ -6,14 +6,12 @@ A modular pipeline for evaluating LLMs using a common evaluate() function.
 1. Clone the repository
 git clone https://github.com/student-nimisha/Final_model_eval_pipeline.git
 
-cd Final_model_eval_pipeline
+2. cd Final_model_eval_pipeline
 
 3. Install dependencies
 pip install -r requirements.txt
 
-4. Configure the evaluation
-
-Edit config.json to select the required:
+4.Edit config.json to select the required:
 
 Model and model path
 Prompt
@@ -23,10 +21,19 @@ Generation parameters
 4. Run evaluation
 from pipeline import evaluate
 
+5. From Pipeline import evaluate function
+
+6.Pass the inputs as "records" in dictionary format
+
+example:
 records = [
     {"id": "1", "text": "ith oru mosham sthalam aan"},
     {"id": "2", "text": "Good morning!"}
 ]
+
+
+
+
 
 **EVALUATE FUNCTION:**
 
@@ -182,7 +189,7 @@ def evaluate(
 
 
 
-results = evaluate(records)
+7.results = evaluate(records)
 
 The pipeline reads all configuration from config.json and returns the model's raw responses:
 
