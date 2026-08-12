@@ -1,9 +1,15 @@
-Usage
+LLM Model Evaluation Pipeline
+
+A modular pipeline for evaluating LLMs using a common evaluate() function.
+
+**Usage**
 1. Clone the repository
 git clone https://github.com/student-nimisha/Final_model_eval_pipeline.git
 cd Final_model_eval_pipeline
+
 2. Install dependencies
 pip install -r requirements.txt
+
 3. Configure the evaluation
 
 Edit config.json to select the required:
