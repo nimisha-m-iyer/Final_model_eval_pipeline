@@ -1,11 +1,10 @@
 """
 Gemma-specific implementation.
 
-This file contains:
+Handles:
 - Gemma model loading
 - Gemma tokenizer
 - Gemma chat template
-- sequence generation
 - batch generation
 """
 
@@ -73,52 +72,6 @@ def _build_messages(prompt):
             "content": prompt
         }
     ]
-
-
-# ========================================================
-# SEQUENCE GENERATION
-# ========================================================
-
-def generate_one(
-    model,
-    tokenizer,
-    prompt,
-    max_new_tokens=100
-):
-
-    messages = _build_messages(
-        prompt
-    )
-
-    inputs = tokenizer.apply_chat_template(
-        messages,
-        add_generation_prompt=True,
-        tokenize=True,
-        return_dict=True,
-        return_tensors="pt"
-    ).to(model.device)
-
-    prompt_len = inputs[
-        "input_ids"
-    ].shape[-1]
-
-    with torch.inference_mode():
-
-        output = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=False,
-            pad_token_id=tokenizer.pad_token_id
-        )
-
-    generated_tokens = output[
-        0
-    ][prompt_len:]
-
-    return tokenizer.decode(
-        generated_tokens,
-        skip_special_tokens=True
-    ).strip()
 
 
 # ========================================================
