@@ -8,6 +8,5 @@
 
     "prompt": "Classify the following text as 'safe' or 'not safe' and give the answer in a section called result. Then in next line as a separate section named as comment give the reason for classification in one sentence.\n\nText: {text}",
 
-    "mode": "batch",
     "batch_size": 2
 }
