@@ -1,7 +1,8 @@
 """
 Minimal LLM evaluation pipeline.
 
-The configuration is read from config.json.
+Configuration is loaded from config.json when this
+module is imported.
 
 Input:
     list of dictionaries containing:
@@ -37,7 +38,7 @@ MODEL_MODULES = {
 
 
 # ========================================================
-# LOAD CONFIG
+# LOAD CONFIG ONCE
 # ========================================================
 
 def load_config(config_path="config.json"):
@@ -51,55 +52,47 @@ def load_config(config_path="config.json"):
         return json.load(f)
 
 
+CONFIG = load_config()
+
+
 # ========================================================
 # EVALUATE
 # ========================================================
 
-def evaluate(
-    records,
-    config_path="config.json"
-):
+def evaluate(records):
 
     # ----------------------------------------------------
-    # Read configuration
+    # Get settings from config
     # ----------------------------------------------------
 
-    config = load_config(
-        config_path
-    )
+    model_type = CONFIG["model_type"]
 
-    model_type = config["model_type"]
-    model_path = config["model_path"]
+    model_path = CONFIG["model_path"]
 
-    torch_dtype = config.get(
+    torch_dtype = CONFIG.get(
         "torch_dtype",
         "bfloat16"
     )
 
-    device_map = config.get(
+    device_map = CONFIG.get(
         "device_map",
         "auto"
     )
 
-    max_new_tokens = config.get(
+    max_new_tokens = CONFIG.get(
         "max_new_tokens",
         100
     )
 
-    prompt = config["prompt"]
+    prompt = CONFIG["prompt"]
 
-    mode = config.get(
-        "mode",
-        "sequence"
-    )
-
-    batch_size = config.get(
+    batch_size = CONFIG.get(
         "batch_size",
         1
     )
 
     # ----------------------------------------------------
-    # Select model-specific file
+    # Select model-specific module
     # ----------------------------------------------------
 
     if model_type not in MODEL_MODULES:
@@ -115,7 +108,7 @@ def evaluate(
     ]
 
     # ----------------------------------------------------
-    # Load model ONCE
+    # Load model once
     # ----------------------------------------------------
 
     print(
@@ -141,34 +134,53 @@ def evaluate(
     )
 
     # ----------------------------------------------------
-    # RESULTS
+    # Generate responses
     # ----------------------------------------------------
 
     results = []
 
-    # ====================================================
-    # SEQUENCE MODE
-    # ====================================================
+    for start in range(
+        0,
+        len(records),
+        batch_size
+    ):
 
-    if mode == "sequence":
+        chunk = records[
+            start:start + batch_size
+        ]
 
-        for i, record in enumerate(records):
-
-            current_prompt = prompt.format(
+        prompts = [
+            prompt.format(
                 text=record["text"]
             )
+            for record in chunk
+        ]
 
-            response = module.generate_one(
-                model,
-                tokenizer,
-                current_prompt,
-                max_new_tokens
+        responses = module.generate_batch(
+            model,
+            tokenizer,
+            prompts,
+            max_new_tokens
+        )
+
+        # ------------------------------------------------
+        # Store results
+        # ------------------------------------------------
+
+        for index, (
+            record,
+            response
+        ) in enumerate(
+            zip(
+                chunk,
+                responses
             )
+        ):
 
             result = {
                 "id": record.get(
                     "id",
-                    str(i)
+                    str(start + index)
                 ),
                 "response": response
             }
@@ -185,76 +197,10 @@ def evaluate(
                 f"Response: {result['response']}"
             )
 
-    # ====================================================
-    # BATCH MODE
-    # ====================================================
-
-    elif mode == "batch":
-
-        for start in range(
-            0,
-            len(records),
-            batch_size
-        ):
-
-            chunk = records[
-                start:start + batch_size
-            ]
-
-            prompts = [
-                prompt.format(
-                    text=record["text"]
-                )
-                for record in chunk
-            ]
-
-            raw_list = module.generate_batch(
-                model,
-                tokenizer,
-                prompts,
-                max_new_tokens
-            )
-
-            for index, (
-                record,
-                response
-            ) in enumerate(
-                zip(
-                    chunk,
-                    raw_list
-                )
-            ):
-
-                result = {
-                    "id": record.get(
-                        "id",
-                        str(start + index)
-                    ),
-                    "response": response
-                }
-
-                results.append(
-                    result
-                )
-
-                print(
-                    f"\nID: {result['id']}"
-                )
-
-                print(
-                    f"Response: {result['response']}"
-                )
-
-            print(
-                f"\n[pipeline] processed "
-                f"{min(start + batch_size, len(records))}/"
-                f"{len(records)}"
-            )
-
-    else:
-
-        raise ValueError(
-            "mode must be 'sequence' or 'batch'"
+        print(
+            f"\n[pipeline] processed "
+            f"{min(start + batch_size, len(records))}/"
+            f"{len(records)}"
         )
 
     return results
