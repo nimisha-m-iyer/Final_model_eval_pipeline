@@ -15,7 +15,6 @@ pip install -r requirements.txt
 
     Model and model path
     Prompt
-    Mode (batch / sequence)
     Batch size
     Generation parameters
 
