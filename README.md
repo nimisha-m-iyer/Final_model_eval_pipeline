@@ -35,54 +35,70 @@ records = [
 
 **EVALUATE FUNCTION:**
 
-def evaluate(
-    records,
-    config_path="config.json"
-):
 
-    config = load_config(config_path)
+def evaluate(records):
 
-    model_type = config["model_type"]
-    model_path = config["model_path"]
+    # ----------------------------------------------------
+    # Get settings from config
+    # ----------------------------------------------------
 
-    torch_dtype = config.get(
+    model_type = CONFIG["model_type"]
+
+    model_path = CONFIG["model_path"]
+
+    torch_dtype = CONFIG.get(
         "torch_dtype",
         "bfloat16"
     )
 
-    device_map = config.get(
+    device_map = CONFIG.get(
         "device_map",
         "auto"
     )
 
-    max_new_tokens = config.get(
+    max_new_tokens = CONFIG.get(
         "max_new_tokens",
         100
     )
 
-    prompt = config["prompt"]
+    prompt = CONFIG["prompt"]
 
-    mode = config.get(
-        "mode",
-        "sequence"
-    )
-
-    batch_size = config.get(
+    batch_size = CONFIG.get(
         "batch_size",
         1
     )
 
+    # ----------------------------------------------------
+    # Select model-specific module
+    # ----------------------------------------------------
+
     if model_type not in MODEL_MODULES:
+
         raise ValueError(
             f"Unknown model_type: {model_type}. "
-            f"Choose from: {list(MODEL_MODULES.keys())}"
+            f"Choose from: "
+            f"{list(MODEL_MODULES.keys())}"
         )
 
-    module = MODEL_MODULES[model_type]
+    module = MODEL_MODULES[
+        model_type
+    ]
 
-    print(f"[pipeline] model type: {model_type}")
-    print(f"[pipeline] model path: {model_path}")
-    print("[pipeline] loading model...")
+    # ----------------------------------------------------
+    # Load model once
+    # ----------------------------------------------------
+
+    print(
+        f"[pipeline] model type: {model_type}"
+    )
+
+    print(
+        f"[pipeline] model path: {model_path}"
+    )
+
+    print(
+        "[pipeline] loading model..."
+    )
 
     model, tokenizer = module.load(
         model_path,
@@ -90,97 +106,78 @@ def evaluate(
         device_map
     )
 
-    print("[pipeline] model loaded.")
+    print(
+        "[pipeline] model loaded."
+    )
+
+    # ----------------------------------------------------
+    # Generate responses
+    # ----------------------------------------------------
 
     results = []
 
-    if mode == "sequence":
+    for start in range(
+        0,
+        len(records),
+        batch_size
+    ):
 
-        for i, record in enumerate(records):
+        chunk = records[
+            start:start + batch_size
+        ]
 
-            current_prompt = prompt.format(
+        prompts = [
+            prompt.format(
                 text=record["text"]
             )
+            for record in chunk
+        ]
 
-            response = module.generate_one(
-                model,
-                tokenizer,
-                current_prompt,
-                max_new_tokens
+        responses = module.generate_batch(
+            model,
+            tokenizer,
+            prompts,
+            max_new_tokens
+        )
+
+        # ------------------------------------------------
+        # Store results
+        # ------------------------------------------------
+
+        for index, (
+            record,
+            response
+        ) in enumerate(
+            zip(
+                chunk,
+                responses
             )
+        ):
 
             result = {
                 "id": record.get(
                     "id",
-                    str(i)
+                    str(start + index)
                 ),
                 "response": response
             }
 
-            results.append(result)
-
-            print(f"\nID: {result['id']}")
-            print(f"Response: {result['response']}")
-
-    elif mode == "batch":
-
-        for start in range(
-            0,
-            len(records),
-            batch_size
-        ):
-
-            chunk = records[
-                start:start + batch_size
-            ]
-
-            prompts = [
-                prompt.format(
-                    text=record["text"]
-                )
-                for record in chunk
-            ]
-
-            raw_list = module.generate_batch(
-                model,
-                tokenizer,
-                prompts,
-                max_new_tokens
+            results.append(
+                result
             )
-
-            for index, (
-                record,
-                response
-            ) in enumerate(
-                zip(
-                    chunk,
-                    raw_list
-                )
-            ):
-
-                result = {
-                    "id": record.get(
-                        "id",
-                        str(start + index)
-                    ),
-                    "response": response
-                }
-
-                results.append(result)
-
-                print(f"\nID: {result['id']}")
-                print(f"Response: {result['response']}")
 
             print(
-                f"\n[pipeline] processed "
-                f"{min(start + batch_size, len(records))}/"
-                f"{len(records)}"
+                f"\nID: {result['id']}"
             )
 
-    else:
+            print(
+                f"Response: {result['response']}"
+            )
 
-        raise ValueError(
-            "mode must be 'sequence' or 'batch'"
+        print(
+            f"\n[pipeline] processed "
+            f"{min(start + batch_size, len(records))}/"
+            f"{len(records)}"
         )
 
     return results
