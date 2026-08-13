@@ -191,4 +191,4 @@ The pipeline reads all configuration from config.json and returns the model's ra
 [
     {"id": "1", "response": "..."},
     {"id": "2", "response": "..."}
-]e evaluation configuration. Edit config.json instead.
+]
