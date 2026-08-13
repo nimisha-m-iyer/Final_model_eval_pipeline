@@ -1,10 +1,10 @@
 """
 Gemma-specific implementation.
 
-Handles:
+This file contains:
 - Gemma model loading
 - Gemma tokenizer
-- Gemma chat template
+- Gemma chat formatting
 - batch generation
 """
 
@@ -14,6 +14,26 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer
 )
+
+
+# ========================================================
+# PRIVATE GEMMA FORMATTER
+# ========================================================
+
+class _GemmaFormatter:
+
+    def build_messages(self, prompt):
+
+        return [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+
+
+# Create the private formatter
+_formatter = _GemmaFormatter()
 
 
 # ========================================================
@@ -61,20 +81,6 @@ def load(
 
 
 # ========================================================
-# GEMMA CHAT FORMAT
-# ========================================================
-
-def _build_messages(prompt):
-
-    return [
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ]
-
-
-# ========================================================
 # BATCH GENERATION
 # ========================================================
 
@@ -87,10 +93,18 @@ def generate_batch(
 
     tokenizer.padding_side = "left"
 
+    # ----------------------------------------------------
+    # Build Gemma messages
+    # ----------------------------------------------------
+
     messages_list = [
-        _build_messages(prompt)
+        _formatter.build_messages(prompt)
         for prompt in prompts
     ]
+
+    # ----------------------------------------------------
+    # Apply Gemma chat template
+    # ----------------------------------------------------
 
     formatted_prompts = [
         tokenizer.apply_chat_template(
@@ -100,6 +114,10 @@ def generate_batch(
         )
         for messages in messages_list
     ]
+
+    # ----------------------------------------------------
+    # Tokenize
+    # ----------------------------------------------------
 
     inputs = tokenizer(
         formatted_prompts,
@@ -111,6 +129,10 @@ def generate_batch(
         "input_ids"
     ].shape[1]
 
+    # ----------------------------------------------------
+    # Generate
+    # ----------------------------------------------------
+
     with torch.inference_mode():
 
         output = model.generate(
@@ -119,6 +141,10 @@ def generate_batch(
             do_sample=False,
             pad_token_id=tokenizer.pad_token_id
         )
+
+    # ----------------------------------------------------
+    # Decode
+    # ----------------------------------------------------
 
     results = []
 
@@ -130,13 +156,13 @@ def generate_batch(
             i
         ][prompt_len:]
 
-        text = tokenizer.decode(
+        response = tokenizer.decode(
             generated_tokens,
             skip_special_tokens=True
         ).strip()
 
         results.append(
-            text
+            response
         )
 
     return results
