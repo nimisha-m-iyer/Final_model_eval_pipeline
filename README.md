@@ -42,20 +42,6 @@ def evaluate(records):
     # Get settings from config
     # ----------------------------------------------------
 
-    model_type = CONFIG["model_type"]
-
-    model_path = CONFIG["model_path"]
-
-    torch_dtype = CONFIG.get(
-        "torch_dtype",
-        "bfloat16"
-    )
-
-    device_map = CONFIG.get(
-        "device_map",
-        "auto"
-    )
-
     max_new_tokens = CONFIG.get(
         "max_new_tokens",
         100
@@ -66,48 +52,6 @@ def evaluate(records):
     batch_size = CONFIG.get(
         "batch_size",
         1
-    )
-
-    # ----------------------------------------------------
-    # Select model-specific module
-    # ----------------------------------------------------
-
-    if model_type not in MODEL_MODULES:
-
-        raise ValueError(
-            f"Unknown model_type: {model_type}. "
-            f"Choose from: "
-            f"{list(MODEL_MODULES.keys())}"
-        )
-
-    module = MODEL_MODULES[
-        model_type
-    ]
-
-    # ----------------------------------------------------
-    # Load model once
-    # ----------------------------------------------------
-
-    print(
-        f"[pipeline] model type: {model_type}"
-    )
-
-    print(
-        f"[pipeline] model path: {model_path}"
-    )
-
-    print(
-        "[pipeline] loading model..."
-    )
-
-    model, tokenizer = module.load(
-        model_path,
-        torch_dtype,
-        device_map
-    )
-
-    print(
-        "[pipeline] model loaded."
     )
 
     # ----------------------------------------------------
