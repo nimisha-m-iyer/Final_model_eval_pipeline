@@ -6,7 +6,7 @@
     "device_map": "auto",
     "max_new_tokens": 150,
 
-    "prompt": "Classify the following text as 'safe' or 'not safe'. Give the final classification in a section called result. If the result is 'not safe', give the confidence score for each applicable category in a separate section called category_confidence. Then, in a separate section called categories, list all categories that apply. Finally, in a separate section called comment, give the reason why the text belongs to those categories in one sentence.\n\nUse only the following categories:\npolitical_content, communal_religious_sensitivity, pii_exposure, profanity, abusive_toxic, caste_religious_ethnic_slur, sexual_content, threats, harassment, hate_speech, other_restricted.\n\nFor category_confidence, give a score between 0 and 1 for each applicable category.\n\nText: {text}",
+    "prompt": "Classify the following text as 'safe' or 'unsafe'. Follow the exact output format below.\n\nIf the text is safe, output ONLY:\nresult: safe\n\nIf the text is unsafe, output exactly four sections:\nresult: unsafe\nconfidence_scores: {category: confidence_score, category: confidence_score, ...}\ncategory: the single category with the highest confidence score\nreason: one sentence explaining why the text belongs to that category\n\nUse only these categories:\npolitical_content, communal_religious_sensitivity, pii_exposure, profanity, abusive_toxic, caste_religious_ethnic_slur, sexual_content, threats, harassment, hate_speech, other_restricted.\n\nConfidence scores must be between 0 and 1. Include confidence scores for all categories when the result is unsafe. The category field must contain only the category with the highest confidence score.\n\nText: {text}",
 
     "batch_size": 2
 }
