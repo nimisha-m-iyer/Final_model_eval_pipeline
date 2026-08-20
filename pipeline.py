@@ -8,6 +8,7 @@ Input:
     list of dictionaries containing:
         id
         text
+        type (optional)
 
 Output:
     list of dictionaries containing:
@@ -158,7 +159,11 @@ def evaluate(records):
 
         prompts = [
             prompt.format(
-                text=record["text"]
+                text=record["text"],
+                type=record.get(
+                    "type",
+                    ""
+                )
             )
             for record in chunk
         ]
