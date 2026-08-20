@@ -125,10 +125,6 @@ print(
 
 def evaluate(records):
 
-    # ----------------------------------------------------
-    # Get settings from config
-    # ----------------------------------------------------
-
     max_new_tokens = CONFIG.get(
         "max_new_tokens",
         100
@@ -136,14 +132,15 @@ def evaluate(records):
 
     prompt = CONFIG["prompt"]
 
+    type_prompt = CONFIG.get(
+        "type_prompt",
+        ""
+    )
+
     batch_size = CONFIG.get(
         "batch_size",
         1
     )
-
-    # ----------------------------------------------------
-    # Generate responses
-    # ----------------------------------------------------
 
     results = []
 
@@ -157,16 +154,27 @@ def evaluate(records):
             start:start + batch_size
         ]
 
-        prompts = [
-            prompt.format(
-                text=record["text"],
-                type=record.get(
-                    "type",
-                    ""
-                )
+        prompts = []
+
+        for record in chunk:
+
+            current_prompt = prompt.format(
+                text=record["text"]
             )
-            for record in chunk
-        ]
+
+            # --------------------------------------------
+            # Add type classification only if type exists
+            # --------------------------------------------
+
+            if record.get("type"):
+
+                current_prompt += type_prompt.format(
+                    type=record["type"]
+                )
+
+            prompts.append(
+                current_prompt
+            )
 
         responses = module.generate_batch(
             model,
